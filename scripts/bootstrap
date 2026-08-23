@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_source=${BASH_SOURCE[0]}
+script_dir=${script_source%/*}
+if [[ "$script_dir" == "$script_source" ]]; then
+  script_dir=.
+fi
+script_dir=$(cd -P -- "$script_dir" && pwd)
+repo_root=$(cd -P -- "$script_dir/.." && pwd)
+
+dry_run=false
+assume_yes=false
+apply_args=()
+
+manual_hint() {
+  printf '%s\n' "详细操作见: docs/operations.md"
+}
+
+fail() {
+  printf '%s\n' "$1" >&2
+  manual_hint >&2
+}
+
+usage() {
+  printf '%s\n' \
+    "Usage: ./scripts/bootstrap [--dry-run] [--yes] [--scope ADAPTER]" \
+    "" \
+    "初始化或收敛 Ubuntu 24.04+ 的 WSL2 开发环境。" \
+    "" \
+    "Options:" \
+    "  --dry-run        只显示将执行的命令，不安装或修改系统" \
+    "  --yes            跳过确认，用于已审查配置和计划的自动化执行" \
+    "  --scope ADAPTER  只收敛指定 adapter，可重复；当前为 apt、mise、rustup" \
+    "  -h, --help       显示此帮助" \
+    "" \
+    "示例:" \
+    "  ./scripts/bootstrap --dry-run" \
+    "  ./scripts/bootstrap" \
+    "  ./scripts/bootstrap --yes --scope rustup" \
+    "" \
+    "完整操作手册: docs/operations.md"
+}
+
+while (($#)); do
+  case "$1" in
+    --dry-run)
+      dry_run=true
+      shift
+      ;;
+    --yes)
+      assume_yes=true
+      shift
+      ;;
+    --scope)
+      if (($# < 2)); then
+        fail "error: --scope requires an adapter name"
+        exit 1
+      fi
+      apply_args+=(--scope "$2")
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'error: unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+print_command() {
+  printf 'dry-run:'
+  printf ' %q' "$@"
+  printf '\n'
+}
+
+run_command() {
+  if $dry_run; then
+    print_command "$@"
+  else
+    "$@"
+  fi
+}
+
+os_release_file=${DEV_ENV_OS_RELEASE_FILE:-/etc/os-release}
+if [[ ! -r "$os_release_file" ]]; then
+  fail "error: cannot read OS metadata: $os_release_file"
+  exit 1
+fi
+
+os_id=
+os_version=
+while IFS='=' read -r key value; do
+  value=${value%$'\r'}
+  value=${value#\"}
+  value=${value%\"}
+  value=${value#\'}
+  value=${value%\'}
+  case "$key" in
+    ID) os_id=$value ;;
+    VERSION_ID) os_version=$value ;;
+  esac
+done < "$os_release_file"
+
+if [[ "$os_id" != "ubuntu" || ! "$os_version" =~ ^([0-9]+)(\.([0-9]+))?$ ]]; then
+  fail "error: bootstrap supports Ubuntu 24.04 or newer"
+  exit 1
+fi
+
+ubuntu_major=${BASH_REMATCH[1]}
+if ((ubuntu_major < 24)); then
+  fail "error: bootstrap supports Ubuntu 24.04 or newer"
+  exit 1
+fi
+
+mise_was_missing=false
+if ! command -v mise >/dev/null 2>&1; then
+  mise_was_missing=true
+  if ! $dry_run && ! $assume_yes; then
+    printf 'mise is missing. Install it and converge this workstation? [y/N] '
+    read -r answer
+    if [[ ! "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+      fail "bootstrap cancelled"
+      exit 1
+    fi
+    assume_yes=true
+  fi
+
+  if ((ubuntu_major >= 26)); then
+    run_command sudo apt update
+    run_command sudo apt install -y software-properties-common
+    run_command sudo add-apt-repository -y ppa:jdxcode/mise
+    run_command sudo apt update
+    run_command sudo apt install -y mise
+  else
+    run_command sudo apt update
+    run_command sudo apt install -y extrepo
+    run_command sudo extrepo enable mise
+    run_command sudo apt update
+    run_command sudo apt install -y mise
+  fi
+fi
+
+if $dry_run; then
+  if $mise_was_missing; then
+    print_command "$repo_root/scripts/dev-env" apply "${apply_args[@]}"
+    manual_hint
+    exit 0
+  fi
+
+  set +e
+  "$repo_root/scripts/dev-env" plan "${apply_args[@]}"
+  plan_status=$?
+  set -e
+  if ((plan_status == 0 || plan_status == 2)); then
+    exit 0
+  fi
+  exit "$plan_status"
+fi
+
+if $assume_yes; then
+  apply_args+=(--yes)
+fi
+exec "$repo_root/scripts/dev-env" apply "${apply_args[@]}"

@@ -1,0 +1,40 @@
+min_version = "2026.8.9"
+
+[settings]
+lockfile = true
+
+[bootstrap.packages]
+"apt:build-essential" = "latest"
+"apt:ca-certificates" = "latest"
+"apt:curl" = "latest"
+"apt:git" = "latest"
+"apt:libbz2-dev" = "latest"
+"apt:libffi-dev" = "latest"
+"apt:liblzma-dev" = "latest"
+"apt:libncurses-dev" = "latest"
+"apt:libreadline-dev" = "latest"
+"apt:libsqlite3-dev" = "latest"
+"apt:libssl-dev" = "latest"
+"apt:mise" = "latest"
+"apt:zlib1g-dev" = "latest"
+
+[bootstrap.mise_shell_activate]
+bashrc = "activate"
+
+[dotfiles]
+"~/.config/mise/config.toml" = { source = "mise.toml", mode = "symlink" }
+"~/.config/mise/mise.lock" = { source = "mise.lock", mode = "symlink" }
+
+[env]
+CARGO_HOME = "{{env.HOME}}/.cargo"
+RUSTUP_HOME = "{{env.HOME}}/.rustup"
+UV_PYTHON_DOWNLOADS = "never"
+UV_PYTHON_PREFERENCE = "only-system"
+_.path = ["{{env.HOME}}/.cargo/bin"]
+
+[tools]
+python = ["3.12", "3.11", "3.10", "3.9", "3.8"]
+node = ["22", "20", "24"]
+java = ["temurin-21", "temurin-17"]
+"aqua:openai/codex" = "latest"
+"uv" = "latest"

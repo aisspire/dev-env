@@ -1,0 +1,108 @@
+{
+  "adapters": {
+    "apt": {
+      "available": true,
+      "desired": [
+        {
+          "name": "git",
+          "requested_version": "latest"
+        }
+      ],
+      "extra": [],
+      "findings": [],
+      "missing": [],
+      "observed": [
+        {
+          "name": "git",
+          "version": "1.0.0-example"
+        }
+      ],
+      "status": "converged"
+    },
+    "mise": {
+      "desired": [
+        {
+          "requested_version": "3.12",
+          "resolved_version": "3.12.0-example",
+          "tool": "python"
+        }
+      ],
+      "extra": [],
+      "findings": [],
+      "missing": [],
+      "observed": [
+        {
+          "active": true,
+          "installed": true,
+          "tool": "python",
+          "version": "3.12.0-example"
+        }
+      ],
+      "status": "converged"
+    },
+    "rustup": {
+      "available": true,
+      "default_toolchain": {
+        "desired": "stable",
+        "observed": "stable"
+      },
+      "desired": [
+        {
+          "components": [
+            "clippy",
+            "rust-analyzer",
+            "rustfmt"
+          ],
+          "default": true,
+          "profile": "minimal",
+          "targets": [],
+          "toolchain": "stable"
+        }
+      ],
+      "extra": [],
+      "findings": [],
+      "manager": {
+        "version": "1.0.0-example"
+      },
+      "missing": [],
+      "observed": [
+        {
+          "commit_date": "2000-01-01",
+          "components": [
+            "cargo",
+            "clippy",
+            "rust-analyzer",
+            "rust-std",
+            "rustc",
+            "rustfmt"
+          ],
+          "host": "x86_64-unknown-linux-gnu",
+          "release": "1.0.0-example",
+          "targets": [
+            "x86_64-unknown-linux-gnu"
+          ],
+          "toolchain": "stable"
+        }
+      ],
+      "profile": {
+        "desired": "minimal",
+        "observed": "minimal"
+      },
+      "status": "converged"
+    }
+  },
+  "platform": {
+    "architecture": "x86_64",
+    "init": "systemd",
+    "os": "ubuntu",
+    "version": "24.04-example",
+    "wsl": true
+  },
+  "schema_version": 1,
+  "summary": {
+    "converged": true,
+    "extra": 0,
+    "findings": 0,
+    "missing": 0
+  }
+}

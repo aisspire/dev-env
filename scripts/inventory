@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_source=${BASH_SOURCE[0]}
+script_dir=${script_source%/*}
+if [[ "$script_dir" == "$script_source" ]]; then
+  script_dir=.
+fi
+script_dir=$(cd -P -- "$script_dir" && pwd)
+
+exec "$script_dir/dev-env" inventory "$@"

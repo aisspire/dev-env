@@ -1,0 +1,10 @@
+* text=auto
+
+*.md text eol=lf
+*.json text eol=lf
+*.lock text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+scripts/bootstrap text eol=lf
+scripts/dev-env text eol=lf
+scripts/inventory text eol=lf

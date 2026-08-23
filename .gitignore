@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+mise.local.toml
+mise.local.lock
+/inventory/current.json
+/docs/doing.md
+/docs/sessions/

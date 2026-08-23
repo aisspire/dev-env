@@ -1,0 +1,15 @@
+min_version = "2026.8.9"
+
+[settings]
+lockfile = false
+
+[bootstrap.packages]
+"apt:ca-certificates" = "latest"
+"apt:jq" = "latest"
+
+[bootstrap.mise_shell_activate]
+bashrc = "activate"
+
+[tools]
+java = ["21.0.2", "17.0.2"]
+python = "3.12.14"

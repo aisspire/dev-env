@@ -1,0 +1,11 @@
+schema_version = 1
+default_toolchain = "stable"
+profile = "minimal"
+
+[toolchains.stable]
+components = ["clippy", "rust-analyzer", "rustfmt"]
+targets = []
+
+[toolchains.nightly]
+components = ["clippy", "rust-analyzer", "rustfmt"]
+targets = []
