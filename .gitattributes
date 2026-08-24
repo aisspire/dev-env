@@ -5,6 +5,7 @@
 *.lock text eol=lf
 *.py text eol=lf
 *.toml text eol=lf
+config/shell/bash_aliases text eol=lf
 scripts/bootstrap text eol=lf
 scripts/dev-env text eol=lf
 scripts/inventory text eol=lf
