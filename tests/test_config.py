@@ -41,6 +41,10 @@ class WorkstationConfigTests(unittest.TestCase):
     def test_lock_shell_and_global_links_are_declared(self):
         self.assertTrue(self.config["settings"]["lockfile"])
         self.assertEqual("activate", self.config["bootstrap"]["mise_shell_activate"]["bashrc"])
+        self.assertEqual(
+            "config/shell/bash_aliases",
+            self.config["dotfiles"]["~/.bash_aliases"]["source"],
+        )
         self.assertEqual("mise.toml", self.config["dotfiles"]["~/.config/mise/config.toml"]["source"])
         self.assertEqual("mise.lock", self.config["dotfiles"]["~/.config/mise/mise.lock"]["source"])
 

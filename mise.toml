@@ -22,6 +22,7 @@ lockfile = true
 bashrc = "activate"
 
 [dotfiles]
+"~/.bash_aliases" = { source = "config/shell/bash_aliases", mode = "symlink" }
 "~/.config/mise/config.toml" = { source = "mise.toml", mode = "symlink" }
 "~/.config/mise/mise.lock" = { source = "mise.lock", mode = "symlink" }
 

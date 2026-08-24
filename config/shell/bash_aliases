@@ -1,0 +1,142 @@
+# Managed by dev-env through mise bootstrap dotfiles.
+
+codex-p() {
+    if (( $# < 1 )); then
+        printf 'usage: codex-p <provider> [codex arguments...]\n' >&2
+        return 2
+    fi
+
+    local provider="$1"
+    shift
+    case "$provider" in
+        ""|*[![:alnum:]_-]*)
+            printf 'codex-p: invalid provider: %s\n' "$provider" >&2
+            return 2
+            ;;
+    esac
+
+    command codex -c "model_provider=\"$provider\"" "$@"
+}
+
+codex-env-add() {
+    if (( $# != 1 )); then
+        printf 'usage: codex-env-add <name>\n' >&2
+        return 2
+    fi
+
+    local name="$1"
+    case "$name" in
+        ""|*[![:alnum:]_-]*)
+            printf 'codex-env-add: invalid name: %s\n' "$name" >&2
+            return 2
+            ;;
+    esac
+
+    local source_home="$HOME/.codex"
+    local profiles_root="$HOME/.codex-env"
+    local profile_home="$profiles_root/.codex-$name"
+    local alias_name="codex-$name"
+    local alias_value='CODEX_HOME="$HOME/.codex-env/.codex-'"$name"'" codex'
+    local alias_line="alias ${alias_name}='${alias_value}'"
+    local aliases_file="${BASH_SOURCE[0]}"
+    local managed_start='# >>> dev-env:codex-env aliases >>>'
+    local managed_end='# <<< dev-env:codex-env aliases <<<'
+
+    if [[ ! -d "$source_home" ]]; then
+        printf 'codex-env-add: source directory does not exist: %s\n' "$source_home" >&2
+        return 1
+    fi
+    if [[ -e "$profile_home" ]]; then
+        printf 'codex-env-add: profile already exists: %s\n' "$profile_home" >&2
+        return 1
+    fi
+    if ! grep -Fqx -- "$managed_start" "$aliases_file" \
+        || ! grep -Fqx -- "$managed_end" "$aliases_file"; then
+        printf 'codex-env-add: managed alias block is missing: %s\n' "$aliases_file" >&2
+        return 1
+    fi
+    if grep -Fq -- "alias ${alias_name}=" "$aliases_file"; then
+        printf 'codex-env-add: alias already exists: %s\n' "$alias_name" >&2
+        return 1
+    fi
+
+    if ! (umask 077 && mkdir -p -- "$profiles_root"); then
+        printf 'codex-env-add: cannot create directory: %s\n' "$profiles_root" >&2
+        return 1
+    fi
+    if ! cp -a -- "$source_home" "$profile_home"; then
+        printf 'codex-env-add: cannot copy profile: %s\n' "$profile_home" >&2
+        return 1
+    fi
+
+    local temporary
+    temporary="$(mktemp "${TMPDIR:-/tmp}/codex-env-aliases.XXXXXX")" || {
+        rm -rf -- "$profile_home"
+        return 1
+    }
+    if ! awk -v start="$managed_start" -v line="$alias_line" '
+        $0 == start { print; print line; next }
+        { print }
+    ' "$aliases_file" > "$temporary" || ! cat -- "$temporary" > "$aliases_file"; then
+        rm -f -- "$temporary"
+        rm -rf -- "$profile_home"
+        printf 'codex-env-add: cannot update aliases: %s\n' "$aliases_file" >&2
+        return 1
+    fi
+    rm -f -- "$temporary"
+
+    alias "$alias_name=$alias_value"
+    printf 'added %s -> %s\n' "$alias_name" "$profile_home"
+}
+
+codex-env-delete() {
+    if (( $# != 1 )); then
+        printf 'usage: codex-env-delete <name>\n' >&2
+        return 2
+    fi
+
+    local name="$1"
+    case "$name" in
+        ""|*[![:alnum:]_-]*)
+            printf 'codex-env-delete: invalid name: %s\n' "$name" >&2
+            return 2
+            ;;
+    esac
+
+    local profile_home="$HOME/.codex-env/.codex-$name"
+    local alias_name="codex-$name"
+    local alias_value='CODEX_HOME="$HOME/.codex-env/.codex-'"$name"'" codex'
+    local alias_line="alias ${alias_name}='${alias_value}'"
+    local aliases_file="${BASH_SOURCE[0]}"
+    local managed_start='# >>> dev-env:codex-env aliases >>>'
+    local managed_end='# <<< dev-env:codex-env aliases <<<'
+
+    if ! grep -Fqx -- "$managed_start" "$aliases_file" \
+        || ! grep -Fqx -- "$managed_end" "$aliases_file"; then
+        printf 'codex-env-delete: managed alias block is missing: %s\n' "$aliases_file" >&2
+        return 1
+    fi
+
+    local temporary
+    temporary="$(mktemp "${TMPDIR:-/tmp}/codex-env-aliases.XXXXXX")" || return 1
+    if ! awk -v start="$managed_start" -v end="$managed_end" -v target="$alias_line" '
+        $0 == start { managed = 1 }
+        $0 == end { managed = 0 }
+        !(managed && $0 == target) { print }
+    ' "$aliases_file" > "$temporary" || ! cat -- "$temporary" > "$aliases_file"; then
+        rm -f -- "$temporary"
+        printf 'codex-env-delete: cannot update aliases: %s\n' "$aliases_file" >&2
+        return 1
+    fi
+    rm -f -- "$temporary"
+
+    if ! rm -rf -- "$profile_home"; then
+        printf 'codex-env-delete: cannot delete profile: %s\n' "$profile_home" >&2
+        return 1
+    fi
+    unalias "$alias_name" 2>/dev/null || true
+    printf 'deleted %s and %s\n' "$alias_name" "$profile_home"
+}
+
+# >>> dev-env:codex-env aliases >>>
+# <<< dev-env:codex-env aliases <<<
