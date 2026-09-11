@@ -1,5 +1,59 @@
 # Managed by dev-env through mise bootstrap dotfiles.
 
+proxy() {
+    if (( $# < 1 || $# > 3 )); then
+        printf '用法: proxy <端口> [主机地址 [NO_PROXY]]\n' >&2
+        return 2
+    fi
+
+    local scheme="http"
+    local scheme_socks="socks5"
+    local port="$1"
+    local host_address="${2:-127.0.0.1}"
+    local no_proxy_value="${3:-localhost,127.0.0.1,::1}"
+
+    if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        printf '❌ 端口无效: %s\n' "$port" >&2
+        return 2
+    fi
+
+    local proxy_url="${scheme}://${host_address}:${port}"
+    local socks_url="${scheme_socks}://${host_address}:${port}"
+
+    # 常见代理环境变量，小写和大写都设置，兼容更多工具
+    export http_proxy="$proxy_url"
+    export https_proxy="$proxy_url"
+    export socks_proxy="$socks_url"
+    export socks5_proxy="$socks_url"
+    export all_proxy="$proxy_url"
+    export HTTP_PROXY="$proxy_url"
+    export HTTPS_PROXY="$proxy_url"
+    export SOCKS_PROXY="$socks_url"
+    export SOCKS5_PROXY="$socks_url"
+    export ALL_PROXY="$proxy_url"
+    export no_proxy="$no_proxy_value"
+    export NO_PROXY="$no_proxy_value"
+    export NODE_USE_ENV_PROXY="1"
+
+    printf '✅ 代理已设置为: %s\n' "$proxy_url"
+    printf '   http_proxy  = %s\n' "$http_proxy"
+    printf '   https_proxy = %s\n' "$https_proxy"
+    printf '   socks_proxy = %s\n' "$socks_proxy"
+    printf '   socks5_proxy = %s\n' "$socks5_proxy"
+    printf '   all_proxy   = %s\n' "$all_proxy"
+    printf '   no_proxy    = %s\n' "$no_proxy"
+    curl --fail --silent --show-error 'https://api.ipify.org?format=json'
+    printf '\n'
+}
+
+unproxy() {
+    unset http_proxy https_proxy socks_proxy socks5_proxy all_proxy
+    unset HTTP_PROXY HTTPS_PROXY SOCKS_PROXY SOCKS5_PROXY ALL_PROXY
+    unset no_proxy NO_PROXY NODE_USE_ENV_PROXY
+
+    printf '✅ 已取消当前 WSL Bash 会话中的代理环境变量。\n'
+}
+
 codex-p() {
     if (( $# < 1 )); then
         printf 'usage: codex-p <provider> [codex arguments...]\n' >&2

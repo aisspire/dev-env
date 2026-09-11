@@ -27,6 +27,87 @@ class ShellAliasesTests(unittest.TestCase):
             env=env,
         )
 
+    def test_proxy_sets_http_socks_and_node_environment(self):
+        result = self.run_bash(
+            SHELL_CONFIG,
+            """
+curl() { printf '{"ip":"203.0.113.1"}\\n'; }
+proxy 10808 proxy.example >/dev/null
+printf '%s\n' \
+    "$http_proxy" "$https_proxy" "$socks_proxy" "$socks5_proxy" "$all_proxy" \
+    "$HTTP_PROXY" "$HTTPS_PROXY" "$SOCKS_PROXY" "$SOCKS5_PROXY" "$ALL_PROXY" \
+    "$no_proxy" "$NO_PROXY" "$NODE_USE_ENV_PROXY"
+""",
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            [
+                "http://proxy.example:10808",
+                "http://proxy.example:10808",
+                "socks5://proxy.example:10808",
+                "socks5://proxy.example:10808",
+                "http://proxy.example:10808",
+                "http://proxy.example:10808",
+                "http://proxy.example:10808",
+                "socks5://proxy.example:10808",
+                "socks5://proxy.example:10808",
+                "http://proxy.example:10808",
+                "localhost,127.0.0.1,::1",
+                "localhost,127.0.0.1,::1",
+                "1",
+            ],
+            result.stdout.splitlines(),
+        )
+
+    def test_proxy_checks_public_ip_after_setting_environment(self):
+        result = self.run_bash(
+            SHELL_CONFIG,
+            """
+curl() { printf 'curl %s\n' "$*"; }
+proxy 10808
+""",
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn(
+            "curl --fail --silent --show-error https://api.ipify.org?format=json",
+            result.stdout,
+        )
+
+    def test_proxy_rejects_invalid_port(self):
+        result = self.run_bash(SHELL_CONFIG, "proxy 65536")
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("端口无效", result.stderr)
+
+    def test_proxy_requires_port(self):
+        result = self.run_bash(SHELL_CONFIG, "proxy")
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("proxy <端口>", result.stderr)
+
+    def test_unproxy_clears_all_managed_environment(self):
+        result = self.run_bash(
+            SHELL_CONFIG,
+            """
+curl() { printf '{"ip":"203.0.113.1"}\\n'; }
+proxy 10808 proxy.example >/dev/null
+unproxy >/dev/null
+for name in \
+    http_proxy https_proxy socks_proxy socks5_proxy all_proxy \
+    HTTP_PROXY HTTPS_PROXY SOCKS_PROXY SOCKS5_PROXY ALL_PROXY \
+    no_proxy NO_PROXY NODE_USE_ENV_PROXY; do
+    if [[ -v "$name" ]]; then
+        printf 'still set: %s\n' "$name" >&2
+        exit 1
+    fi
+done
+""",
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_codex_p_selects_provider_and_forwards_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
