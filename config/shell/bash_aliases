@@ -90,17 +90,57 @@ codex-env-add() {
     local profiles_root="$HOME/.codex-env"
     local profile_home="$profiles_root/.codex-$name"
     local alias_name="codex-$name"
-    local alias_value='CODEX_HOME="$HOME/.codex-env/.codex-'"$name"'" codex'
+    local alias_value='CODEX_HOME="$HOME/.codex-env/.codex-'"$name"'" codex --disable apps'
     local alias_line="alias ${alias_name}='${alias_value}'"
     local aliases_file="${BASH_SOURCE[0]}"
     local managed_start='# >>> dev-env:codex-env aliases >>>'
     local managed_end='# <<< dev-env:codex-env aliases <<<'
 
+    # 集中维护复制排除项：只匹配 CODEX_HOME 根目录的条目，支持 Bash 通配符。
+    # 不递归匹配同名内容，避免误删插件、技能和服务内部的数据。
+    local -a excluded_entries=(
+        # 后台服务、通信文件和进程锁
+        'app-server-control'
+        'app-server-control.sock'
+        'app-server-daemon'
+        'thread-writer-locks'
+        'mcp-oauth-locks'
+        '.sqlite-maintenance.lock'
+        'session_index.jsonl.lock'
+        # 缓存、临时目录、日志和会话运行数据
+        'cache'
+        'tmp'
+        '.tmp'
+        'log'
+        'models_cache.json'
+        'shell_snapshots'
+        'tui-thread-reference-capabilities'
+        # 认证文件（不处理 config.toml 内的密钥、环境变量或系统密钥环）
+        'auth.json'
+        'auth.json.*'
+        '.credentials.json'
+        '.credentials.json.*'
+        # 历史会话、生成图片、记忆、目标和任务队列
+        'sessions'
+        'archived_sessions'
+        'history.jsonl'
+        'session_index.jsonl'
+        'generated_images'
+        'memories'
+        # 已知 Codex 数据库；同时排除 -wal、-shm 等伴随文件
+        'state_*.sqlite*'
+        'thread_history_*.sqlite*'
+        'logs_*.sqlite*'
+        'memories*.sqlite*'
+        'goals_*.sqlite*'
+        'queue_*.sqlite*'
+    )
+
     if [[ ! -d "$source_home" ]]; then
         printf 'codex-env-add: source directory does not exist: %s\n' "$source_home" >&2
         return 1
     fi
-    if [[ -e "$profile_home" ]]; then
+    if [[ -e "$profile_home" || -L "$profile_home" ]]; then
         printf 'codex-env-add: profile already exists: %s\n' "$profile_home" >&2
         return 1
     fi
@@ -118,7 +158,30 @@ codex-env-add() {
         printf 'codex-env-add: cannot create directory: %s\n' "$profiles_root" >&2
         return 1
     fi
-    if ! cp -a -- "$source_home" "$profile_home"; then
+    if ! mkdir -m 700 -- "$profile_home"; then
+        printf 'codex-env-add: cannot create profile: %s\n' "$profile_home" >&2
+        return 1
+    fi
+    if ! (
+        # 子 Shell 内启用隐藏文件和空目录展开，不改变调用者的 Shell 选项。
+        shopt -u failglob
+        shopt -s dotglob nullglob
+        local entry pattern excluded
+        for entry in "$source_home"/*; do
+            excluded=false
+            for pattern in "${excluded_entries[@]}"; do
+                if [[ "${entry##*/}" == $pattern ]]; then
+                    excluded=true
+                    break
+                fi
+            done
+            if [[ "$excluded" == true ]]; then
+                continue
+            fi
+            cp -a -- "$entry" "$profile_home/" || exit 1
+        done
+    ); then
+        rm -rf -- "$profile_home"
         printf 'codex-env-add: cannot copy profile: %s\n' "$profile_home" >&2
         return 1
     fi
@@ -159,8 +222,6 @@ codex-env-delete() {
 
     local profile_home="$HOME/.codex-env/.codex-$name"
     local alias_name="codex-$name"
-    local alias_value='CODEX_HOME="$HOME/.codex-env/.codex-'"$name"'" codex'
-    local alias_line="alias ${alias_name}='${alias_value}'"
     local aliases_file="${BASH_SOURCE[0]}"
     local managed_start='# >>> dev-env:codex-env aliases >>>'
     local managed_end='# <<< dev-env:codex-env aliases <<<'
@@ -173,10 +234,11 @@ codex-env-delete() {
 
     local temporary
     temporary="$(mktemp "${TMPDIR:-/tmp}/codex-env-aliases.XXXXXX")" || return 1
-    if ! awk -v start="$managed_start" -v end="$managed_end" -v target="$alias_line" '
-        $0 == start { managed = 1 }
-        $0 == end { managed = 0 }
-        !(managed && $0 == target) { print }
+    if ! awk -v start="$managed_start" -v end="$managed_end" -v alias_name="$alias_name" '
+        $0 == start { managed = 1; print; next }
+        $0 == end { managed = 0; print; next }
+        managed && index($0, "alias " alias_name "=") == 1 { next }
+        { print }
     ' "$aliases_file" > "$temporary" || ! cat -- "$temporary" > "$aliases_file"; then
         rm -f -- "$temporary"
         printf 'codex-env-delete: cannot update aliases: %s\n' "$aliases_file" >&2

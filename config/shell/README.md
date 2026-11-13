@@ -53,14 +53,29 @@ source ~/.bash_aliases
 整份 `.bashrc`。仓库把 [`bash_aliases`](bash_aliases) 以符号链接方式管理为
 `~/.bash_aliases`；Ubuntu 默认的 `.bashrc` 会在交互式 Bash 启动时加载它。
 
-该文件中的配置副本管理只提供增加和删除两个操作。增加操作把当前 `~/.codex` 完整复制到
-`~/.codex-env/.codex-<name>`，并在文件末尾的受控块中生成
+该文件中的配置副本管理只提供增加和删除两个操作。增加操作把当前 `~/.codex` 中需要
+保留的内容复制到 `~/.codex-env/.codex-<name>`，并在文件末尾的受控块中生成
 `codex-<name>` alias：
 
 ```bash
 codex-env-add work
 codex-work
 ```
+
+复制排除清单集中放在 `codex-env-add` 的 `excluded_entries` 数组中，可以直接查看、
+增加或删除条目。条目支持 Bash 通配符，只匹配源目录根部的文件和目录，不递归匹配
+插件或服务内部的同名内容。复制时跳过排除项，不修改源目录，也不清理已有副本。
+
+默认排除后台服务运行目录、Socket、锁文件、缓存、临时文件、日志、历史会话、
+生成图片、认证文件、记忆、目标及任务队列。已知 Codex SQLite 数据库连同 `-wal`、
+`-shm` 等伴随文件一起排除，避免保留旧会话索引或其他状态。
+保留 `config.toml`、`AGENTS.md`、技能、规则、插件、软件包和
+`database-schema-bootstrap` 等未列入清单的内容。副本目录权限为 `700`；复制失败
+会移除未完成的副本，不生成 alias。
+
+认证文件排除不等于清除所有认证来源：`config.toml` 中的内嵌凭据、环境变量以及
+系统密钥环仍需自行管理。配置中的绝对路径也会原样保留，例如 MCP 服务可能继续
+引用原目录；需要隔离数据库时还应检查 `sqlite_home` 和 `CODEX_SQLITE_HOME`。
 
 如果 provider 已在 `~/.codex/config.toml` 中声明，可以只为本次启动指定 provider；
 其余参数会原样传给 Codex：
@@ -70,8 +85,8 @@ codex-p example
 codex-p example --model gpt-5.6-terra
 ```
 
-生成的 alias 通过 `CODEX_HOME` 使用副本，但仍调用同一个 `codex` 程序。用户可以
-自行修改副本中的配置。删除操作同时移除目录和受控块中的 alias：
+生成的 alias 通过 `CODEX_HOME` 使用副本，附带 `--disable apps`，仍调用同一个
+`codex` 程序。用户可以自行修改副本中的配置。删除操作同时移除目录和受控块中的 alias：
 
 ```bash
 codex-env-delete work

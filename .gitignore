@@ -5,3 +5,7 @@ mise.local.lock
 /inventory/current.json
 /docs/doing.md
 /docs/sessions/
+
+# Private deployment files may remain locally when switching from personal.
+/backups/
+/servers/

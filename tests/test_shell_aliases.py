@@ -1,5 +1,6 @@
 import os
 import shlex
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -158,7 +159,7 @@ done
 
             profile_home = home / ".codex-env" / ".codex-work"
             alias_line = (
-                "alias codex-work='CODEX_HOME=\"$HOME/.codex-env/.codex-work\" codex'"
+                "alias codex-work='CODEX_HOME=\"$HOME/.codex-env/.codex-work\" codex --disable apps'"
             )
             self.assertEqual(0, added.returncode, added.stderr)
             self.assertEqual("model = 'test'\n", (profile_home / "config.toml").read_text())
@@ -170,6 +171,94 @@ done
             self.assertEqual(0, deleted.returncode, deleted.stderr)
             self.assertFalse(profile_home.exists())
             self.assertNotIn(alias_line, shell_config.read_text(encoding="utf-8"))
+
+    def test_add_excludes_runtime_auth_history_and_memory_without_changing_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            source_home = home / ".codex"
+            source_home.mkdir(parents=True)
+            retained = [
+                "config.toml", "AGENTS.md", ".sandbox_migration", ".custom-settings",
+                "skills/example/SKILL.md", "rules/default.rules",
+                "plugins/cache/plugin.txt", "packages/app-server-daemon/binary",
+                "database-schema-bootstrap/state/state_1.sqlite",
+                "custom/cache/keep.txt", "app-settings/keep.txt",
+            ]
+            excluded = [
+                "app-server-control/app-server-startup.lock",
+                "app-server-daemon/daemon.pid", "cache/cached.json", "tmp/arg0/file",
+                ".tmp/file", "log/codex.log", "models_cache.json",
+                "shell_snapshots/snapshot.sh", "tui-thread-reference-capabilities/file",
+                "thread-writer-locks/thread.lock", "mcp-oauth-locks/oauth.lock",
+                ".sqlite-maintenance.lock", "session_index.jsonl.lock",
+                "auth.json", "auth.json.bak", ".credentials.json", ".credentials.json.bak",
+                "sessions/2026/rollout.jsonl", "archived_sessions/rollout.jsonl",
+                "history.jsonl", "session_index.jsonl", "generated_images/image.png",
+                "memories/summary.md",
+            ]
+            for database in (
+                "state_5", "thread_history_1", "logs_2", "memories_1",
+                "memories_v2_1", "goals_1", "queue_1",
+            ):
+                excluded.extend(f"{database}.sqlite{suffix}" for suffix in ("", "-wal", "-shm"))
+            for relative in retained + excluded:
+                path = source_home / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative, encoding="utf-8")
+            (source_home / "skills-link").symlink_to("skills", target_is_directory=True)
+            shell_config = home / ".bash_aliases"
+            shell_config.write_bytes(SHELL_CONFIG.read_bytes())
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+
+            # 排除真实 Unix Socket，验证过滤发生在复制之前。
+            socket_path = source_home / "app-server-control.sock"
+            with socket.socket(socket.AF_UNIX) as control_socket:
+                control_socket.bind(str(socket_path))
+                added = self.run_bash(
+                    shell_config,
+                    'before=$(shopt -p dotglob nullglob failglob)\n'
+                    'codex-env-add work || exit $?\n'
+                    '[[ "$before" == "$(shopt -p dotglob nullglob failglob)" ]]',
+                    env=env,
+                )
+            self.assertEqual(0, added.returncode, added.stderr)
+            profile_home = home / ".codex-env" / ".codex-work"
+            self.assertEqual(0o700, profile_home.stat().st_mode & 0o777)
+            for relative in retained:
+                with self.subTest(retained=relative):
+                    self.assertEqual(relative, (profile_home / relative).read_text())
+            for relative in excluded:
+                with self.subTest(excluded=relative):
+                    self.assertFalse((profile_home / relative).exists())
+                    self.assertEqual(relative, (source_home / relative).read_text())
+            self.assertTrue(socket_path.is_socket())
+            self.assertFalse((profile_home / socket_path.name).exists())
+            self.assertEqual("skills", os.readlink(profile_home / "skills-link"))
+
+    def test_add_removes_partial_profile_without_registering_alias_when_copy_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            source_home = home / ".codex"
+            source_home.mkdir(parents=True)
+            (source_home / "config.toml").write_text("model = 'test'\n", encoding="utf-8")
+            shell_config = home / ".bash_aliases"
+            original = SHELL_CONFIG.read_bytes()
+            shell_config.write_bytes(original)
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+
+            result = self.run_bash(
+                shell_config,
+                'cp() { command cp "$@"; return 1; }\ncodex-env-add work',
+                env=env,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("cannot copy profile", result.stderr)
+            self.assertFalse((home / ".codex-env" / ".codex-work").exists())
+            self.assertEqual(original, shell_config.read_bytes())
+            self.assertEqual("model = 'test'\n", (source_home / "config.toml").read_text())
 
     def test_add_rejects_unsafe_name(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -186,6 +275,56 @@ done
             self.assertEqual(2, result.returncode)
             self.assertIn("invalid name", result.stderr)
             self.assertFalse((temporary / "outside").exists())
+
+    def test_add_preserves_existing_dangling_profile_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            (home / ".codex").mkdir(parents=True)
+            profiles_root = home / ".codex-env"
+            profiles_root.mkdir()
+            profile_home = profiles_root / ".codex-work"
+            profile_home.symlink_to("missing-profile", target_is_directory=True)
+            shell_config = home / ".bash_aliases"
+            original = SHELL_CONFIG.read_bytes()
+            shell_config.write_bytes(original)
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+
+            result = self.run_bash(shell_config, "codex-env-add work", env=env)
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("profile already exists", result.stderr)
+            self.assertTrue(profile_home.is_symlink())
+            self.assertEqual("missing-profile", os.readlink(profile_home))
+            self.assertEqual(original, shell_config.read_bytes())
+
+    def test_delete_handles_legacy_and_custom_aliases_without_removing_other_entries(self):
+        for command in ("codex", "codex --disable apps --model test"):
+            with self.subTest(command=command), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory) / "home"
+                profile_home = home / ".codex-env" / ".codex-work"
+                profile_home.mkdir(parents=True)
+                shell_config = home / ".bash_aliases"
+                target = f"alias codex-work='CODEX_HOME=\"$HOME/.codex-env/.codex-work\" {command}'\n"
+                other = "alias codex-work-extra='codex --version'\n"
+                outside = "alias codex-work='codex --help'\n"
+                start = "# >>> dev-env:codex-env aliases >>>\n"
+                original = SHELL_CONFIG.read_text(encoding="utf-8")
+                shell_config.write_text(
+                    outside + original.replace(start, start + target + other),
+                    encoding="utf-8",
+                )
+                env = os.environ.copy()
+                env["HOME"] = str(home)
+
+                result = self.run_bash(shell_config, "codex-env-delete work", env=env)
+
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertFalse(profile_home.exists())
+                self.assertEqual(
+                    outside + original.replace(start, start + other),
+                    shell_config.read_text(encoding="utf-8"),
+                )
 
 
 if __name__ == "__main__":
